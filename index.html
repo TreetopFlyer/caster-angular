@@ -106,11 +106,6 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         };
         obj.Clip = function()
         {
-            if(obj.Min > obj.Max)
-            {
-                obj.Min = obj.Max;
-                obj.Value = obj.Max;
-            }
             if(obj.Value < obj.Min)
             {
                 obj.Value = obj.Min;
@@ -119,6 +114,19 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             {
                 obj.Value = obj.Max;
             }
+        };
+        obj.RelCheck = function(inValue)
+        {
+            inValue += obj.Value;
+            if(inValue < obj.Min)
+            {
+                return inValue - obj.Min;
+            }
+            if(inValue > obj.Max)
+            {
+                return inValue - obj.Max;
+            }
+            return 0;
         };
         obj.Abs = function(inValue)
         {
@@ -130,29 +138,95 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             obj.Value += inValue;
             obj.Clip();
         };
+        obj.Percent = function()
+        {
+            return (obj.Value - obj.Min)/(obj.Max - obj.Min);
+        };
         stat.Instances.push(obj);
         return obj;
     };
     return stat;
 }])
-.factory("Player", [function()
+.factory("Energy", ["Stat", function(Stat)
+{
+    var energy = [];
+    energy.push(Stat.Create(0, 3, 10));
+    energy.push(Stat.Create(0, 3, 10));
+    energy.push(Stat.Create(0, 3, 10));
+    energy.push(Stat.Create(0, 3, 10));
+    return energy;
+}])
+.factory("Player", ["Stat", function(Stat)
 {
     var player = {};
 
     player.Create = function()
     {
         var obj = {};
-
+        obj.Health = Stat.Create(0, 100, 100);
+        obj.Energy = Stat.Create(0, 5, 3);
         obj.Active = false;
         obj.Playable = function()
         {
             return true;
         };
 
+        obj.Abilities = [];
+        obj.Effects = [];
+
         return obj;
     }
 
     return player;
+}])
+.factory("Ability", ["Energy", "Stat", function(Energy, Stat)
+{
+    var ability = {};
+    ability.Create = function(inDeltas)
+    {
+        var i;
+        var obj = {};
+        obj.Charges = Stat.Create(0, 0, 99);
+        obj.Power = 0;
+        obj.Deltas = inDeltas;
+
+        for(i=0; obj.Deltas.length; i++)
+        {
+            if(obj.Deltas[i] > 0)
+            {
+                obj.Power += obj.Deltas[i];
+            }
+        }
+
+        obj.CheckCharge = function()
+        {
+            var i;
+            var miss;
+            var out = {
+                Error:0,
+                Overshoot:[]
+            };
+            for(i=0; i<obj.Deltas.length; i++)
+            {
+                miss = Energy[i].RelCheck(obj.Deltas[i]);
+                out.Overshoot.push(miss);
+                out.Error += Math.abs(miss);
+            }
+            return out;
+        };
+
+        obj.Charge = function()
+        {
+            for(i=0; i<obj.Deltas.length; i++)
+            {
+                Energy[i].Rel(obj.Deltas[i]);
+            }
+            obj.Charges.Rel(1);
+        };
+
+        return obj;
+    };
+    return ability;
 }])
 .factory("Round", ["Util", function(Util)
 {
