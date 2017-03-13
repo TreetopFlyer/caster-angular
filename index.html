@@ -7,8 +7,214 @@
     </head>
     <body>
 
+
+        <div ng-app="Game" ng-controller="GameController">
+            <h3>{{Round.Index}}</h3>
+            <dl ng-repeat="Player in Players">
+                <dt>Player</dt>
+                <dd ng-show="Player.Active">
+                    <button ng-click="Round.Advance()">End Turn</button>
+                </dd>
+            </dl>
+        </div>
+
+
 <script>
-angular.module("Game", ["ngAnimate", "ngRoute"]);
+angular.module("Game", ["ngAnimate", "ngRoute"])
+.factory("Util", [function()
+{
+    var util = {};
+    util.ArrayRemove = function(inArray, inObject)
+    {
+        var i;
+        for(i=0; i<inArray.length; i++)
+        {
+            if(inArray[i] == inObject)
+            {
+                return inArray.splice(i, 1)[0];
+            }
+        }
+    };
+    util.ArrayClone = function(inArray)
+    {
+        var index;
+        var out = [];
+        for(i=0; i<inArray.length; i++)
+        {
+            out.push(inArray[i]);
+        }
+        return out;
+    };
+    util.ArrayJumble = function(inArray)
+    {
+        var index;
+        var out = [];
+        while(inArray.length != 0)
+        {
+            index = Math.floor(Math.random()*inArray.length);
+            out.push(inArray.splice(index, 1)[0]);
+        }
+        return out;
+    };
+    return util;
+}])
+.factory("Stat", [function()
+{
+    var stat = {};
+    stat.Instances = [];
+    stat.SaveIndex = 0;
+    stat.Save = function()
+    {
+        var i;
+        for(i=0; i<stat.Instances.length; i++)
+        {
+            stat.Instances[i].History.push({
+                Min:obj.Min,
+                Max:obj.Max,
+                Value:obj.Value
+            });
+        }
+        stat.SaveIndex++;
+    };
+    stat.Load = function(inIndex)
+    {
+        var i;
+        for(i=0; i<stat.Instances.length; i++)
+        {
+            var stat = stat.Instances[i]
+            var history = stat.History[inIndex];
+            stat.Min = history.Min;
+            stat.Max = history.Max;
+            stat.Value = history.Value;
+        }
+    };
+    stat.Flush = function()
+    {
+        var i;
+        for(i=0; i<stat.Instances.length; i++)
+        {
+            stat.Instances[i].History = [];
+        } 
+    };
+    stat.Create = function(inMin, inValue, inMax)
+    {
+        var obj = {
+            Min: inMin,
+            Max: inMax,
+            Value: inValue,
+            History: []
+        };
+        obj.Clip = function()
+        {
+            if(obj.Min > obj.Max)
+            {
+                obj.Min = obj.Max;
+                obj.Value = obj.Max;
+            }
+            if(obj.Value < obj.Min)
+            {
+                obj.Value = obj.Min;
+            }
+            if(obj.Value > obj.Max)
+            {
+                obj.Value = obj.Max;
+            }
+        };
+        obj.Abs = function(inValue)
+        {
+            obj.Value = inValue;
+            obj.Clip();
+        };
+        obj.Rel = function(inValue)
+        {
+            obj.Value += inValue;
+            obj.Clip();
+        };
+        stat.Instances.push(obj);
+        return obj;
+    };
+    return stat;
+}])
+.factory("Player", [function()
+{
+    var player = {};
+
+    player.Create = function()
+    {
+        var obj = {};
+
+        obj.Active = false;
+        obj.Playable = function()
+        {
+            return true;
+        };
+
+        return obj;
+    }
+
+    return player;
+}])
+.factory("Round", ["Util", function(Util)
+{
+    var round = {};
+
+    round.Create = function(inPlayers)
+    {
+        var obj = {};
+        obj.Epoch = 0;
+        obj.Index = false;
+        obj.Player = false;
+        obj.Players = Util.ArrayClone(inPlayers);
+
+        obj.Reset = function()
+        {
+            obj.Epoch++;
+            obj.Index = -1;
+            obj.Player = false;
+            obj.Players = Util.ArrayJumble(obj.Players);
+            obj.Advance();
+        };
+
+        obj.Advance = function()
+        {
+            // clear the active player
+            if(obj.Player)
+            {
+                obj.Player.Active = false;
+            }
+
+            obj.Index++;
+            //end condition
+            if(obj.Index >= obj.Players.length)
+            {
+                obj.Reset();
+                return;
+            }
+
+            obj.Player = obj.Players[obj.Index];
+            obj.Player.Active = true;
+            if(!obj.Player.Playable())
+            {
+                obj.Advance();
+            }
+        };
+
+        obj.Reset();
+        return obj;
+    };
+
+    return round;
+}])
+.controller("GameController", ["$scope", "Player", "Round", function($scope, Player, Round)
+{
+    $scope.Players = [];
+    $scope.Players.push(Player.Create());
+    $scope.Players.push(Player.Create());
+    $scope.Players.push(Player.Create());
+    $scope.Players.push(Player.Create());
+
+    $scope.Round = Round.Create($scope.Players);
+}]);
 </script>
 
     </body>
