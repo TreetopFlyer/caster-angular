@@ -12,6 +12,25 @@
             <h3>{{Round.Index}}</h3>
             <dl ng-repeat="Player in Players">
                 <dt>Player</dt>
+                <dd>
+                    <h3>Stats</h3>
+                    <ul>
+                        <li>Health: {{Player.Health.Value}}/{{Player.Health.Max}}</li>
+                        <li>Energy: {{Player.Energy.Value}}/{{Player.Energy.Max}}</li>
+                    </ul>
+                </dd>
+                <dd>
+                    <h3>Abilities</h3>
+                    <ul>
+                        <li></li>
+                    </ul>
+                </dd>
+                <dd ng-hide="Player.Effects.length == 0">
+                    <h3>Effects</h3>
+                    <ul>
+                        <li ng-repeat="Effect in Player.Effects">Effect</li>
+                    </ul>
+                </dd>
                 <dd ng-show="Player.Active">
                     <button ng-click="Round.Advance()">End Turn</button>
                 </dd>
@@ -140,7 +159,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         };
         obj.Percent = function()
         {
-            return (obj.Value - obj.Min)/(obj.Max - obj.Min);
+            return (obj.Value - obj.Min)/(obj.Max - obj.Min) * 100;
         };
         stat.Instances.push(obj);
         return obj;
@@ -164,30 +183,116 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     {
         var obj = {};
         obj.Health = Stat.Create(0, 100, 100);
-        obj.Energy = Stat.Create(0, 5, 3);
+        obj.Energy = Stat.Create(0, 0, 5);
         obj.Active = false;
+        obj.Dead = false;
+        obj.Incapacitated = false;
+
         obj.Playable = function()
         {
+            if(obj.Dead || obj.Incapacitated)
+            {
+                return false;
+            }
             return true;
         };
 
         obj.Abilities = [];
         obj.Effects = [];
 
+        obj.CheckHealth = function()
+        {
+            if(obj.Health.Percent < 20)
+            {
+                obj.Incapacitated = true;
+                if(obj.Health.Percent() == 0)
+                {
+                    obj.Dead = true;
+                }
+            }
+            else
+            {
+                obj.Incapacitated = false;
+                obj.Dead = false;
+            }
+        };
+
+        obj.Effect = function(inEffect)
+        {
+            inEffect.Apply(obj);
+            obj.Effects.push(inEffect);
+            obj.CheckHealth();
+        };
+
+        obj.ApplyEffects = function()
+        {
+            // apply effects
+            var i;
+            var effect;
+            for(i=0; i<obj.Effects.length; i++)
+            {
+                effect = obj.Effects[i];
+                if(!effect.ApplyCheck())
+                {
+                    obj.Effects.splice(i, 1);
+                    i--;
+                }
+                else
+                {
+                    effect.Apply(obj);
+                }
+            }
+
+            // check for lethal effects
+            obj.CheckHealth();
+        };
+
         return obj;
     }
 
     return player;
 }])
-.factory("Ability", ["Energy", "Stat", function(Energy, Stat)
+.factory("Effect", ["Stat", function(Stat)
+{
+    var effect = {};
+
+    effect.Create = function(inPower, inDuration)
+    {
+        var obj = {};
+        obj.Time = Stat.Create(0, inDuration, inDuration);
+        obj.Dole = (inPower/inDuration) * (1 + (inDuration*0.1));
+
+        obj.ApplyCheck = function()
+        {
+            if(obj.Time.Percent() == 0)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        obj.Apply = function(inPlayer)
+        {
+            inPlayer.Health.Rel(obj.Dole);
+            console.log(obj.Dole);
+            obj.Time.Rel(-1);
+        };
+        return obj;
+    };
+
+    return effect;
+}])
+.factory("Ability", ["Energy", "Stat", "Effect", function(Energy, Stat, Effect)
 {
     var ability = {};
-    ability.Create = function(inDeltas)
+    ability.Create = function(inDeltas, inMode)
     {
         var i;
         var obj = {};
         obj.Charges = Stat.Create(0, 0, 99);
         obj.Power = 0;
+        obj.Duration = 0;
+        obj.Mode = -1;
         obj.Deltas = inDeltas;
 
         for(i=0; obj.Deltas.length; i++)
@@ -224,6 +329,17 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             obj.Charges.Rel(1);
         };
 
+        obj.Cast = function(inTargets)
+        {
+            var i;
+            var effect;
+            for(i=0; i<inTargets.length; i++)
+            {
+                inTargets[i].Effect(Effect.Create(obj.Power*obj.Charges*obj.Mode, obj.Duration));
+            }
+            obj.Charges.Abs(0);
+        };
+
         return obj;
     };
     return ability;
@@ -257,19 +373,36 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
                 obj.Player.Active = false;
             }
 
+            //check for round end
             obj.Index++;
-            //end condition
             if(obj.Index >= obj.Players.length)
             {
                 obj.Reset();
                 return;
             }
 
+            
             obj.Player = obj.Players[obj.Index];
-            obj.Player.Active = true;
-            if(!obj.Player.Playable())
+            if(obj.Player.Dead)
             {
+                // if the player was killed this round before their turn skip them
                 obj.Advance();
+            }
+            else
+            {
+                obj.Player.Active = true;
+                obj.Player.ApplyEffects();
+
+                if(obj.Player.Incapacitated)
+                {
+                    // if the player is still incapacitated after the effects are done, skip them
+                    obj.Advance();
+                }
+                else
+                {
+                    // if the player is still not incapacitated, give them energy for the round
+                    obj.Player.Energy.Rel(3);
+                }
             }
         };
 
@@ -279,7 +412,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
     return round;
 }])
-.controller("GameController", ["$scope", "Player", "Round", function($scope, Player, Round)
+.controller("GameController", ["$scope", "Player", "Round", "Effect", function($scope, Player, Round, Effect)
 {
     $scope.Players = [];
     $scope.Players.push(Player.Create());
@@ -287,8 +420,12 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     $scope.Players.push(Player.Create());
     $scope.Players.push(Player.Create());
 
+    $scope.Players[1].Effect(Effect.Create(-30, 3));
+
     $scope.Round = Round.Create($scope.Players);
 }]);
+
+
 </script>
 
     </body>
