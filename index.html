@@ -22,7 +22,7 @@
                 <dd>
                     <h3>Abilities</h3>
                     <ul>
-                        <li></li>
+                        <li ng-repeat="Ability in Player.Abilities">{{Ability.Deltas}}</li>
                     </ul>
                 </dd>
                 <dd ng-hide="Player.Effects.length == 0">
@@ -199,6 +199,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
         obj.Abilities = [];
         obj.Effects = [];
+        obj.Targets = [];
 
         obj.CheckHealth = function()
         {
@@ -247,6 +248,11 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             obj.CheckHealth();
         };
 
+        obj.Ability = function(inAbility)
+        {
+            obj.Abilities.push(inAbility);
+        };
+
         return obj;
     }
 
@@ -285,6 +291,31 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 .factory("Ability", ["Energy", "Stat", "Effect", function(Energy, Stat, Effect)
 {
     var ability = {};
+    ability.Random = function(inPower)
+    {
+        var i;
+        var out = [];
+        var openPos = [];
+        var openNeg = [];
+        for(i=0; i<Energy.length; i++)
+        {
+            openPos.push(i);
+            openNeg.push(i);
+            out.push(0);
+        }
+        for(i=0; i<inPower; i++)
+        {
+            var index;
+
+            index = Math.random()*openPos.length;
+            out[openPos[index]]++;
+            openNeg.splice(index, 1);
+
+            index = Math.random()*openNeg.length;
+            out[openNeg[index]]--;
+            openNeg.splice(index, 1);
+        }
+    };
     ability.Create = function(inDeltas, inMode)
     {
         var i;
@@ -295,7 +326,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         obj.Mode = -1;
         obj.Deltas = inDeltas;
 
-        for(i=0; obj.Deltas.length; i++)
+        for(i=0; i<obj.Deltas.length; i++)
         {
             if(obj.Deltas[i] > 0)
             {
@@ -344,6 +375,15 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     };
     return ability;
 }])
+.factory("Team", [function()
+{
+    var team = {};
+    team.Create = function()
+    {
+
+    }; 
+    return team;
+}])
 .factory("Round", ["Util", function(Util)
 {
     var round = {};
@@ -385,7 +425,6 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             obj.Player = obj.Players[obj.Index];
             if(obj.Player.Dead)
             {
-                // if the player was killed this round before their turn skip them
                 obj.Advance();
             }
             else
@@ -412,15 +451,31 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
     return round;
 }])
-.controller("GameController", ["$scope", "Player", "Round", "Effect", function($scope, Player, Round, Effect)
+.controller("GameController", ["$scope", "Player", "Round", "Ability", "Effect", function($scope, Player, Round, Ability, Effect)
 {
     $scope.Players = [];
-    $scope.Players.push(Player.Create());
-    $scope.Players.push(Player.Create());
-    $scope.Players.push(Player.Create());
-    $scope.Players.push(Player.Create());
+    $scope.TeamA = [];
+    $scope.TeamB = [];
 
-    $scope.Players[1].Effect(Effect.Create(-30, 3));
+    function CreatePlayer()
+    {
+        var player;
+        player = Player.Create();
+        player.Ability(Ability.Create([-1, 1, 0, 0], -1));
+        player.Ability(Ability.Create([0, -1, 1, 0], -1));
+        player.Ability(Ability.Create([0, 0, -1, 1], -1));
+        player.Ability(Ability.Create([1, 0, 0, -1], -1));
+        $scope.Players.push(player);
+        return player;
+    }
+
+    $scope.TeamA[0] = CreatePlayer();
+    $scope.TeamA[1] = CreatePlayer();
+    $scope.TeamA[2] = CreatePlayer();
+
+    $scope.TeamB[0] = CreatePlayer();
+    $scope.TeamB[1] = CreatePlayer();
+    $scope.TeamB[2] = CreatePlayer();
 
     $scope.Round = Round.Create($scope.Players);
 }]);
