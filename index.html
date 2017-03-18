@@ -21,32 +21,37 @@
             <h3>Round: {{Round.Epoch}} Turn: {{Round.Index}}</h3>
             <div>
                 <h4>Current Player</h4>
+                <button ng-click="Round.Advance()">End Turn</button>
                 <table>
                     <tr>
                         <th>Delta</th>
                         <th>Power</th>
                         <th>Duration</th>
                         <th>Charges</th>
+                        <th>Status</th>
                     </tr>
                     <tr ng-repeat="Ability in Round.Player.Abilities">
                         <td>{{Ability.Deltas}}</td>
                         <td>{{Ability.Power}}</td>
                         <td>{{Ability.Duration}}</td>
+                        <td>{{Ability.Charges.Value}}</td>
                         <td>
-                            {{Ability.Charges.Value}}
-                            <button ng-click="Round.Player.QueueCharge(Ability)" ng-show="Ability.CheckCharge().Error == 0">Charge</button>    
+                            <button ng-click="Round.Player.QueueCharge(Ability)">Charge</button>    
+                            <button ng-click="Round.Player.QueueCast(Ability, Targets)">Cast</button>    
                         </td>
                     </tr>
                 </table>
+                <hr/>
                 <ul>
                     <li ng-repeat="Thing in Round.Player.Queue track by $index">
-
+                        <span>{{Thing.Meta.Message}}</span>
                     </li>
                 </ul>
-                <button ng-click="Round.Player.QueuePop()">Undo</button>
-                <button ng-click="">Commit</button>
+                <div ng-hide="Round.Player.Queue.length == 0">
+                    <button ng-click="Round.Player.QueuePop()">Undo Last</button>
+                    <button ng-click="">Commit All</button>
+                </div>
                 <hr/>
-                <button ng-click="Round.Advance()">End Turn</button>
             </div>
             <dl ng-repeat="Player in Players" ng-class="{Active: Player.Active}">
                 <dt>Player</dt>
@@ -132,7 +137,6 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     };
     stat.Load = function(inIndex)
     {
-        console.log("loading" ,inIndex);
         var i;
         for(i=0; i<stat.Instances.length; i++)
         {
@@ -142,7 +146,6 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             st.Min = history.Min;
             st.Max = history.Max;
             st.Value = history.Value;
-
         }
     };
     stat.Flush = function()
@@ -244,14 +247,44 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         obj.Targets = [];
         obj.Queue = [];
 
+        obj.QueuePush = function(inDo, inUndo, inCommit, inMeta)
+        {
+            var q = {
+                Meta: inMeta,
+                Save : Stat.Save(),
+                Do: inDo,
+                Undo: inUndo,
+                Commit: inCommit
+            };
+            q.Do();
+            obj.Queue.push(q);
+        };
         obj.QueuePop = function()
         {
-            Stat.Load(obj.Queue.pop());
+            var last = obj.Queue.pop();
+            last.Undo();
+            Stat.Load(last.Save);
         };
         obj.QueueCharge = function(inAbility)
         {
-            obj.Queue.push(Stat.Save());
-            inAbility.Charge();
+            obj.QueuePush(inAbility.Charge, function(){}, function(){}, {Message:"Charging " + inAbility.Meta.Name});
+        };
+        obj.QueueCast = function(inAbility, inTargets)
+        {
+            function fDo()
+            {
+                inAbility.Cast(inTargets);
+            };
+            function fUndo()
+            {
+                var i;
+                for(i=0; i<inTargets.length; i++)
+                {
+                    inTargets[i].Effects.pop();
+                }
+            };
+
+            obj.QueuePush(fDo, fUndo, function(){}, {Message:"Casting " + inAbility.Meta.Name, Targets:inTargets});
         };
 
 
@@ -354,10 +387,23 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             return true;
         }
 
-        obj.Apply = function(inPlayer)
+        obj.Apply = function()
         {
             obj.Function(obj);
             obj.Time--;
+        };
+
+        obj.Remove = function()
+        {
+            var i;
+            for(i=0; i<obj.From.Effects.length; i++)
+            {
+                if(obj.From.Effects[i] == obj)
+                {
+                    obj.From.Effects.splice(i, 1);
+                    return;
+                }
+            }
         };
 
         return obj;
@@ -393,12 +439,13 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             openNeg.splice(index, 1);
         }
     };
-    ability.Create = function(inDeltas, inType)
+    ability.Create = function(inDeltas, inType, inMeta)
     {
         var i;
         var obj = {};
+        obj.Meta = inMeta;
         obj.Player = {};
-        obj.Charges = Stat.Create(0, 0, 99);
+        obj.Charges = Stat.Create(0, 0, 3);
         obj.Power = 0;
         obj.Duration = 0;
         obj.Type = inType;
@@ -417,15 +464,33 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             var i;
             var miss;
             var out = {
-                Error:0,
+                Error:false,
+                Message:"OK",
                 Overshoot:[]
             };
             for(i=0; i<obj.Deltas.length; i++)
             {
                 miss = Energy[i].RelCheck(obj.Deltas[i]);
                 out.Overshoot.push(miss);
-                out.Error += Math.abs(miss);
+
+                if(miss != 0)
+                {
+                    out.Error = true;
+                }
             }
+
+            if(obj.Player.Energy.Percent() == 0)
+            {
+                out.Error = true;
+                out.Message = "No Energy Left";
+            }
+
+            if(obj.Charges.Percent() == 100)
+            {
+                out.Error = true;
+                out.Message = "Max Charges";
+            }
+
             return out;
         };
 
@@ -543,10 +608,10 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     {
         var player;
         player = Player.Create();
-        player.Ability(Ability.Create([-1, 1, 0, 0], Effect.Damage));
-        player.Ability(Ability.Create([0, -1, 1, 0], Effect.Damage));
-        player.Ability(Ability.Create([0, 0, -1, 1], Effect.Damage));
-        player.Ability(Ability.Create([1, 0, 0, -1], Effect.Damage));
+        player.Ability(Ability.Create([-1, 1, 0, 0], Effect.Damage, {Name:"Basic Damage 1"}));
+        player.Ability(Ability.Create([0, -1, 1, 0], Effect.Damage, {Name:"Basic Damage 2"}));
+        player.Ability(Ability.Create([0, 0, -1, 1], Effect.Damage, {Name:"Basic Damage 3"}));
+        player.Ability(Ability.Create([1, 0, 0, -1], Effect.Damage, {Name:"Basic Damage 4"}));
         $scope.Players.push(player);
         return player;
     }
@@ -562,8 +627,8 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     $scope.Round = Round.Create($scope.Players);
 
     //////////////
-
-    $scope.TeamA[0].Abilities[0].Cast($scope.TeamB);
+    $scope.Targets = $scope.TeamB;
+    $scope.TeamA[0].Abilities[0].Cast($scope.Targets);
 
 }]);
 
