@@ -10,14 +10,45 @@
                 width:200px;
                 float:left;
             }
+            dl.Active
+            {
+                background:#FA0;
+            }
         </style>
     </head>
     <body>
-
-
         <div ng-app="Game" ng-controller="GameController">
             <h3>Round: {{Round.Epoch}} Turn: {{Round.Index}}</h3>
-            <dl ng-repeat="Player in Players">
+            <div>
+                <h4>Current Player</h4>
+                <table>
+                    <tr>
+                        <th>Delta</th>
+                        <th>Power</th>
+                        <th>Duration</th>
+                        <th>Charges</th>
+                    </tr>
+                    <tr ng-repeat="Ability in Round.Player.Abilities">
+                        <td>{{Ability.Deltas}}</td>
+                        <td>{{Ability.Power}}</td>
+                        <td>{{Ability.Duration}}</td>
+                        <td>
+                            {{Ability.Charges.Value}}
+                            <button ng-click="Round.Player.QueueCharge(Ability)" ng-show="Ability.CheckCharge().Error == 0">Charge</button>    
+                        </td>
+                    </tr>
+                </table>
+                <ul>
+                    <li ng-repeat="Thing in Round.Player.Queue track by $index">
+
+                    </li>
+                </ul>
+                <button ng-click="Round.Player.QueuePop()">Undo</button>
+                <button ng-click="">Commit</button>
+                <hr/>
+                <button ng-click="Round.Advance()">End Turn</button>
+            </div>
+            <dl ng-repeat="Player in Players" ng-class="{Active: Player.Active}">
                 <dt>Player</dt>
                 <dd>
                     <h3>Stats</h3>
@@ -27,28 +58,13 @@
                     </ul>
                 </dd>
                 <dd>
-                    <h3>Abilities</h3>
-                    <table>
-                        <tr>
-                            <th>Del</th>
-                            <th>Pow</th>
-                            <th>Dur</th>
-                        </tr>
-                        <tr ng-repeat="Ability in Player.Abilities">
-                            <td>{{Ability.Deltas}}</td>
-                            <td>{{Ability.Power}}</td>
-                            <td>{{Ability.Duration}}</td>
-                        </tr>
-                    </table>
+                    
                 </dd>
                 <dd ng-hide="Player.Effects.length == 0">
                     <h3>Effects</h3>
                     <ul>
-                        <li ng-repeat="Effect in Player.Effects">Effect {{Effect.Time.Percent()}}</li>
+                        <li ng-repeat="Effect in Player.Effects">Effect {{Effect.Time}}</li>
                     </ul>
-                </dd>
-                <dd ng-show="Player.Active">
-                    <button ng-click="Round.Advance()">End Turn</button>
                 </dd>
             </dl>
         </div>
@@ -97,30 +113,36 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 {
     var stat = {};
     stat.Instances = [];
-    stat.SaveIndex = 0;
+    stat.SaveIndex = -1;
     stat.Save = function()
     {
         var i;
+        var st;
         for(i=0; i<stat.Instances.length; i++)
         {
-            stat.Instances[i].History.push({
-                Min:obj.Min,
-                Max:obj.Max,
-                Value:obj.Value
+            st = stat.Instances[i];
+            st.History.push({
+                Min:st.Min,
+                Max:st.Max,
+                Value:st.Value
             });
         }
         stat.SaveIndex++;
+        return stat.SaveIndex;
     };
     stat.Load = function(inIndex)
     {
+        console.log("loading" ,inIndex);
         var i;
         for(i=0; i<stat.Instances.length; i++)
         {
-            var stat = stat.Instances[i]
-            var history = stat.History[inIndex];
-            stat.Min = history.Min;
-            stat.Max = history.Max;
-            stat.Value = history.Value;
+            var st = stat.Instances[i];
+            var history = st.History[inIndex];
+
+            st.Min = history.Min;
+            st.Max = history.Max;
+            st.Value = history.Value;
+
         }
     };
     stat.Flush = function()
@@ -131,6 +153,10 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             stat.Instances[i].History = [];
         } 
     };
+    stat.Pop = function()
+    {
+        
+    }
     stat.Create = function(inMin, inValue, inMax)
     {
         var obj = {
@@ -191,7 +217,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     energy.push(Stat.Create(0, 3, 10));
     return energy;
 }])
-.factory("Player", ["Stat", function(Stat)
+.factory("Player", ["Util", "Stat", function(Util, Stat)
 {
     var player = {};
 
@@ -216,6 +242,18 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         obj.Abilities = [];
         obj.Effects = [];
         obj.Targets = [];
+        obj.Queue = [];
+
+        obj.QueuePop = function()
+        {
+            Stat.Load(obj.Queue.pop());
+        };
+        obj.QueueCharge = function(inAbility)
+        {
+            obj.Queue.push(Stat.Save());
+            inAbility.Charge();
+        };
+
 
         obj.CheckHealth = function()
         {
@@ -282,7 +320,6 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
     effect.Damage = function(inEffect)
     {
-        console.log("damaging ", inEffect.Dole);
         inEffect.To.Health.Rel(-inEffect.Dole);
     };
     effect.Heal = function(inEffect)
@@ -303,13 +340,14 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         var obj = {};
         obj.From = inPlayerFrom;
         obj.To = inPlayerTo;
-        obj.Time = Stat.Create(0, inDuration, inDuration);
-        obj.Dole = (inPower/(inDuration+1)) * (1 + (inDuration*0.1));
+        obj.Time = inDuration+1;
+        obj.Net = inPower * (1 + (inDuration*0.1)); // total effect
+        obj.Dole = obj.Net/obj.Time; // effect doled out per-tick
         obj.Function = inEfectFunction;
 
         obj.ApplyCheck = function()
         {
-            if(obj.Time.Percent() == 0)
+            if(obj.Time <= 0)
             {
                 return false;
             }
@@ -319,7 +357,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         obj.Apply = function(inPlayer)
         {
             obj.Function(obj);
-            obj.Time.Rel(-1);
+            obj.Time--;
         };
 
         return obj;
@@ -426,7 +464,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     }; 
     return team;
 }])
-.factory("Round", ["Util", function(Util)
+.factory("Round", ["Util", "Stat", function(Util, Stat)
 {
     var round = {};
 
@@ -453,6 +491,8 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             if(obj.Player)
             {
                 obj.Player.Active = false;
+                obj.Player.Queue = [];
+                Stat.Flush();
             }
 
             //check for round end
