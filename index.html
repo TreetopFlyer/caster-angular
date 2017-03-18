@@ -4,14 +4,19 @@
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular.min.js"></script>
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular-route.min.js"></script>
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular-animate.min.js"></script>
+        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
         <style>
+            *
+            {
+                font-family: Arial;
+            }
             dl.Player
             {
                 width:200px;
                 float:left;
                 border:2px solid #ddd;
             }
-            dl.Player.Active
+            dl.Player.Active, tr.Selected
             {
                 background:#FA0;
             }
@@ -19,66 +24,91 @@
             {
                 border:2px dotted #F00;
             }
+
+            td
+            {
+                padding:0.5rem;
+            }
+            th
+            {
+                border-bottom:1px solid #ddd;
+            }
+
         </style>
     </head>
     <body>
         <div ng-app="Game" ng-controller="GameController">
-            <h3>Round: {{Round.Epoch}} Turn: {{Round.Index}}</h3>
+
+            <div>
+                <h4>Round: {{Round.Epoch}} Turn: {{Round.Index}}</h4>
+            </div>
+
             <div>
                 <h4>Current Player</h4>
                 <button ng-click="Round.Advance()">End Turn</button>
                 <table>
                     <tr>
-                        <th>Delta</th>
-                        <th>Power</th>
-                        <th>Duration</th>
-                        <th>Charges</th>
-                        <th>Status</th>
+                        <th><i class="material-icons">equalizer</i></th>
+                        <th><i class="material-icons">whatshot</i></th>
+                        <th><i class="material-icons">&#xE192;</i></th>
+                        <th><i class="material-icons">flash_on</i></th>
+                        <th><i class="material-icons">pan_tool</i></th>
                     </tr>
-                    <tr ng-repeat="Ability in Round.Player.Abilities">
+                    <tr ng-repeat="Ability in Round.Player.Abilities" ng-class="{Selected: Ability.Selected}">
                         <td>{{Ability.Deltas}}</td>
                         <td>{{Ability.Power}}</td>
                         <td>{{Ability.Duration}}</td>
-                        <td>{{Ability.Charges.Value}}</td>
                         <td>
-                            <button ng-click="Round.Player.QueueCharge(Ability)">Charge</button>    
-                            <button ng-hide="Ability.Selected" ng-click="Selection.Start(Ability)">Select Targets</button>   
-                            <button ng-show="Selection.Open" ng-click="Round.Player.QueueCast(Ability, Selection.Targets); Selection.Stop();">Cast</button> 
-                            <button ng-show="Selection.Open && Ability.Selected" ng-click="Selection.Stop()">Cancel</button> 
+                            {{Ability.Charges.Value}} / {{Ability.Charges.Max}}
+                            
+                        </td>
+                        <td>
+                            <button ng-hide="Ability.Charges.Value == Ability.Charges.Max" ng-click="Round.Player.QueueCharge(Ability)">Charge <i class="material-icons">&#xE8E5;</i></button>
+                            <button ng-hide="Ability.Selected || Ability.Charges.Value == 0" ng-click="Selection.Start(Ability)">Select Targets <i class="material-icons">&#xE1B4;</i></button> 
+
+                            <button ng-show="Ability.Selected && Selection.Targets.length > 0" ng-click="Round.Player.QueueCast(Ability, Selection.Targets); Selection.Stop();">Cast <i class="material-icons">flare</i></button> 
+                            <button ng-show="Ability.Selected" ng-click="Selection.Stop()">Cancel <i class="material-icons">&#xE1B5;</i></button> 
                         </td>
                     </tr>
                 </table>
                 <hr/>
+                <div ng-hide="Round.Player.Queue.length == 0">
+                    <button ng-click="Round.Player.QueuePop()">Undo Last</button>
+                </div>
                 <ul>
                     <li ng-repeat="Thing in Round.Player.Queue track by $index">
                         <span>{{Thing.Meta.Message}}</span>
                     </li>
                 </ul>
                 <div ng-hide="Round.Player.Queue.length == 0">
-                    <button ng-click="Round.Player.QueuePop()">Undo Last</button>
                     <button ng-click="">Commit All</button>
                 </div>
                 <hr/>
             </div>
-            <dl ng-repeat="Player in Players" class="Player" ng-click="Selection.Toggle(Player)" ng-class="{Active: Player.Active, Targeted: Player.Targeted}">
-                <dt>Player</dt>
-                <dd>
-                    <h3>Stats</h3>
-                    <ul>
-                        <li>Health: {{Player.Health.Value}}/{{Player.Health.Max}}</li>
-                        <li>Energy: {{Player.Energy.Value}}/{{Player.Energy.Max}}</li>
-                    </ul>
-                </dd>
-                <dd>
-                    
-                </dd>
-                <dd ng-hide="Player.Effects.length == 0">
-                    <h3>Effects</h3>
-                    <ul>
-                        <li ng-repeat="Effect in Player.Effects">Effect {{Effect.Time}}</li>
-                    </ul>
-                </dd>
-            </dl>
+
+            <div>
+                <h4>Players</h4>
+                <dl ng-repeat="Player in Players" class="Player" ng-click="Selection.Toggle(Player)" ng-class="{Active: Player.Active, Targeted: Player.Targeted}">
+                    <dt>Player</dt>
+                    <dd>
+                        <h3>Stats</h3>
+                        <ul>
+                            <li>Health: {{Player.Health.Value}}/{{Player.Health.Max}}</li>
+                            <li>Energy: {{Player.Energy.Value}}/{{Player.Energy.Max}}</li>
+                        </ul>
+                    </dd>
+                    <dd>
+                        
+                    </dd>
+                    <dd ng-hide="Player.Effects.length == 0">
+                        <h3>Effects</h3>
+                        <ul>
+                            <li ng-repeat="Effect in Player.Effects">Effect {{Effect.Time}}</li>
+                        </ul>
+                    </dd>
+                </dl>
+            </div>
+        
         </div>
 
 
@@ -234,7 +264,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     player.Create = function()
     {
         var obj = {};
-        obj.Health = Stat.Create(0, 100, 100);
+        obj.Health = Stat.Create(0, 10, 10);
         obj.Energy = Stat.Create(0, 0, 5);
         obj.Active = false;
         obj.Dead = false;
@@ -257,21 +287,27 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
         obj.QueuePush = function(inDo, inUndo, inCommit, inMeta)
         {
+            if(obj.Energy.RelCheck(-1) != 0)
+            {
+                return;
+            }
             var q = {
                 Meta: inMeta,
                 Save : Stat.Save(),
-                Do: inDo,
+                Do: inDo,// do and undo are for removing effects
                 Undo: inUndo,
                 Commit: inCommit
             };
             q.Do();
             obj.Queue.push(q);
+            obj.Energy.Rel(-1);
         };
         obj.QueuePop = function()
         {
             var last = obj.Queue.pop();
             last.Undo();
             Stat.Load(last.Save);
+            Selection.Stop();
         };
         obj.QueueCharge = function(inAbility)
         {
@@ -687,10 +723,6 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     $scope.TeamB[2] = CreatePlayer();
 
     $scope.Round = Round.Create($scope.Players);
-
-    //////////////
-    $scope.Targets = $scope.TeamB;
-    $scope.TeamA[0].Abilities[0].Cast($scope.Targets);
 
 }]);
 
