@@ -4,12 +4,19 @@
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular.min.js"></script>
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular-route.min.js"></script>
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular-animate.min.js"></script>
+        <style>
+            dl
+            {
+                width:200px;
+                float:left;
+            }
+        </style>
     </head>
     <body>
 
 
         <div ng-app="Game" ng-controller="GameController">
-            <h3>{{Round.Index}}</h3>
+            <h3>Round: {{Round.Epoch}} Turn: {{Round.Index}}</h3>
             <dl ng-repeat="Player in Players">
                 <dt>Player</dt>
                 <dd>
@@ -21,14 +28,23 @@
                 </dd>
                 <dd>
                     <h3>Abilities</h3>
-                    <ul>
-                        <li ng-repeat="Ability in Player.Abilities">{{Ability.Deltas}}</li>
-                    </ul>
+                    <table>
+                        <tr>
+                            <th>Del</th>
+                            <th>Pow</th>
+                            <th>Dur</th>
+                        </tr>
+                        <tr ng-repeat="Ability in Player.Abilities">
+                            <td>{{Ability.Deltas}}</td>
+                            <td>{{Ability.Power}}</td>
+                            <td>{{Ability.Duration}}</td>
+                        </tr>
+                    </table>
                 </dd>
                 <dd ng-hide="Player.Effects.length == 0">
                     <h3>Effects</h3>
                     <ul>
-                        <li ng-repeat="Effect in Player.Effects">Effect</li>
+                        <li ng-repeat="Effect in Player.Effects">Effect {{Effect.Time.Percent()}}</li>
                     </ul>
                 </dd>
                 <dd ng-show="Player.Active">
@@ -159,7 +175,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         };
         obj.Percent = function()
         {
-            return (obj.Value - obj.Min)/(obj.Max - obj.Min) * 100;
+            return (obj.Value - obj.Min)/(obj.Max - obj.Min) * 100 || 0;
         };
         stat.Instances.push(obj);
         return obj;
@@ -250,6 +266,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
         obj.Ability = function(inAbility)
         {
+            inAbility.Player = obj;
             obj.Abilities.push(inAbility);
         };
 
@@ -262,11 +279,33 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 {
     var effect = {};
 
-    effect.Create = function(inPower, inDuration)
+
+    effect.Damage = function(inEffect)
+    {
+        console.log("damaging ", inEffect.Dole);
+        inEffect.To.Health.Rel(-inEffect.Dole);
+    };
+    effect.Heal = function(inEffect)
+    {
+        inEffect.To.Health.Rel(inEffect.Dole);
+    };
+    effect.Intimidate = function(inEffect)
+    {
+        inEffect.To.Energy.Rel(-inEffect.Dole);
+    };
+    effect.Rally = function(inEffect)
+    {
+        inEffect.To.Energy.Rel(inEffect.Dole);
+    };
+
+    effect.Create = function(inPlayerFrom, inPlayerTo, inEfectFunction, inPower, inDuration)
     {
         var obj = {};
+        obj.From = inPlayerFrom;
+        obj.To = inPlayerTo;
         obj.Time = Stat.Create(0, inDuration, inDuration);
-        obj.Dole = (inPower/inDuration) * (1 + (inDuration*0.1));
+        obj.Dole = (inPower/(inDuration+1)) * (1 + (inDuration*0.1));
+        obj.Function = inEfectFunction;
 
         obj.ApplyCheck = function()
         {
@@ -279,10 +318,10 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
         obj.Apply = function(inPlayer)
         {
-            inPlayer.Health.Rel(obj.Dole);
-            console.log(obj.Dole);
+            obj.Function(obj);
             obj.Time.Rel(-1);
         };
+
         return obj;
     };
 
@@ -316,14 +355,15 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             openNeg.splice(index, 1);
         }
     };
-    ability.Create = function(inDeltas, inMode)
+    ability.Create = function(inDeltas, inType)
     {
         var i;
         var obj = {};
+        obj.Player = {};
         obj.Charges = Stat.Create(0, 0, 99);
         obj.Power = 0;
         obj.Duration = 0;
-        obj.Mode = -1;
+        obj.Type = inType;
         obj.Deltas = inDeltas;
 
         for(i=0; i<obj.Deltas.length; i++)
@@ -366,7 +406,8 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             var effect;
             for(i=0; i<inTargets.length; i++)
             {
-                inTargets[i].Effect(Effect.Create(obj.Power*obj.Charges*obj.Mode, obj.Duration));
+                effect = Effect.Create(obj.Player, inTargets[i], obj.Type, obj.Power*(obj.Charges.Value+1), obj.Duration);
+                inTargets[i].Effect(effect);
             }
             obj.Charges.Abs(0);
         };
@@ -380,7 +421,8 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     var team = {};
     team.Create = function()
     {
-
+        var team = {};
+        return team;
     }; 
     return team;
 }])
@@ -429,17 +471,16 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             }
             else
             {
-                obj.Player.Active = true;
                 obj.Player.ApplyEffects();
-
                 if(obj.Player.Incapacitated)
                 {
-                    // if the player is still incapacitated after the effects are done, skip them
+                    // if the player is (or is still) incapacitated after the effects are done, skip them
                     obj.Advance();
                 }
                 else
                 {
-                    // if the player is still not incapacitated, give them energy for the round
+                    // if the player is still not incapacitated, give them energy for their return
+                    obj.Player.Active = true;
                     obj.Player.Energy.Rel(3);
                 }
             }
@@ -456,15 +497,16 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     $scope.Players = [];
     $scope.TeamA = [];
     $scope.TeamB = [];
+    $scope.Targets = [];
 
     function CreatePlayer()
     {
         var player;
         player = Player.Create();
-        player.Ability(Ability.Create([-1, 1, 0, 0], -1));
-        player.Ability(Ability.Create([0, -1, 1, 0], -1));
-        player.Ability(Ability.Create([0, 0, -1, 1], -1));
-        player.Ability(Ability.Create([1, 0, 0, -1], -1));
+        player.Ability(Ability.Create([-1, 1, 0, 0], Effect.Damage));
+        player.Ability(Ability.Create([0, -1, 1, 0], Effect.Damage));
+        player.Ability(Ability.Create([0, 0, -1, 1], Effect.Damage));
+        player.Ability(Ability.Create([1, 0, 0, -1], Effect.Damage));
         $scope.Players.push(player);
         return player;
     }
@@ -478,6 +520,11 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     $scope.TeamB[2] = CreatePlayer();
 
     $scope.Round = Round.Create($scope.Players);
+
+    //////////////
+
+    $scope.TeamA[0].Abilities[0].Cast($scope.TeamB);
+
 }]);
 
 
