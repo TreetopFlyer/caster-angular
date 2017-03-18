@@ -5,14 +5,19 @@
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular-route.min.js"></script>
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.6/angular-animate.min.js"></script>
         <style>
-            dl
+            dl.Player
             {
                 width:200px;
                 float:left;
+                border:2px solid #ddd;
             }
-            dl.Active
+            dl.Player.Active
             {
                 background:#FA0;
+            }
+            dl.Player.Targeted
+            {
+                border:2px dotted #F00;
             }
         </style>
     </head>
@@ -37,7 +42,9 @@
                         <td>{{Ability.Charges.Value}}</td>
                         <td>
                             <button ng-click="Round.Player.QueueCharge(Ability)">Charge</button>    
-                            <button ng-click="Round.Player.QueueCast(Ability, Targets)">Cast</button>    
+                            <button ng-hide="Ability.Selected" ng-click="Selection.Start(Ability)">Select Targets</button>   
+                            <button ng-show="Selection.Open" ng-click="Round.Player.QueueCast(Ability, Selection.Targets); Selection.Stop();">Cast</button> 
+                            <button ng-show="Selection.Open && Ability.Selected" ng-click="Selection.Stop()">Cancel</button> 
                         </td>
                     </tr>
                 </table>
@@ -53,7 +60,7 @@
                 </div>
                 <hr/>
             </div>
-            <dl ng-repeat="Player in Players" ng-class="{Active: Player.Active}">
+            <dl ng-repeat="Player in Players" class="Player" ng-click="Selection.Toggle(Player)" ng-class="{Active: Player.Active, Targeted: Player.Targeted}">
                 <dt>Player</dt>
                 <dd>
                     <h3>Stats</h3>
@@ -220,7 +227,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     energy.push(Stat.Create(0, 3, 10));
     return energy;
 }])
-.factory("Player", ["Util", "Stat", function(Util, Stat)
+.factory("Player", ["Util", "Stat", "Selection", function(Util, Stat, Selection)
 {
     var player = {};
 
@@ -232,6 +239,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         obj.Active = false;
         obj.Dead = false;
         obj.Incapacitated = false;
+        obj.Targeted = false;
 
         obj.Playable = function()
         {
@@ -450,7 +458,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         obj.Duration = 0;
         obj.Type = inType;
         obj.Deltas = inDeltas;
-
+        obj.Selected = false;
         for(i=0; i<obj.Deltas.length; i++)
         {
             if(obj.Deltas[i] > 0)
@@ -597,12 +605,66 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
     return round;
 }])
-.controller("GameController", ["$scope", "Player", "Round", "Ability", "Effect", function($scope, Player, Round, Ability, Effect)
+.factory("Selection", [function()
+{
+    var selection = {
+        Targets:[],
+        Ability:{},
+        Open:false,
+        Start:function(inAbility)
+        {
+            selection.Stop();
+
+            inAbility.Selected = true;
+            selection.Open = true;
+            selection.Ability = inAbility;
+        },
+        Stop:function()
+        {
+            var i;
+            for(i=0; i<selection.Targets.length; i++)
+            {
+                selection.Targets[i].Targeted = false;
+            }
+            selection.Ability.Selected = false;
+            selection.Ability = {};
+            selection.Targets = [];
+            selection.Open = false;
+        },
+        Toggle:function(inTarget)
+        {
+            if(!selection.Open)
+            {
+                return;
+            }
+            if(inTarget.Targeted)
+            {
+                var i;
+                for(i=0; i<selection.Targets.length; i++)
+                {
+                    if(selection.Targets[i] == inTarget)
+                    {
+                        inTarget.Targeted = false;
+                        selection.Targets.splice(i, 1);
+                    }
+                }
+            }
+            else
+            {
+                inTarget.Targeted = true;
+                selection.Targets.push(inTarget);
+            }
+        }
+    };
+    return selection;
+}])
+.controller("GameController", ["$scope", "Player", "Round", "Ability", "Effect", "Selection", function($scope, Player, Round, Ability, Effect, Selection)
 {
     $scope.Players = [];
     $scope.TeamA = [];
     $scope.TeamB = [];
-    $scope.Targets = [];
+
+    $scope.Selection = Selection;
 
     function CreatePlayer()
     {
