@@ -63,8 +63,8 @@
                             
                         </td>
                         <td>
-                            <button ng-hide="Ability.Charges.Value == Ability.Charges.Max" ng-click="Round.Player.QueueCharge(Ability)">Charge <i class="material-icons">&#xE8E5;</i></button>
-                            <button ng-hide="Ability.Selected || Ability.Charges.Value == 0" ng-click="Selection.Start(Ability)">Select Targets <i class="material-icons">&#xE1B4;</i></button> 
+                            <button ng-hide="Ability.Charges.Value == Ability.Charges.Max || Round.Player.Energy.Value == 0" ng-click="Round.Player.QueueCharge(Ability)">Charge <i class="material-icons">&#xE8E5;</i></button>
+                            <button ng-hide="Ability.Selected || Ability.Charges.Value == 0 || Round.Player.Energy.Value == 0" ng-click="Selection.Start(Ability)">Select Targets <i class="material-icons">&#xE1B4;</i></button> 
 
                             <button ng-show="Ability.Selected && Selection.Targets.length > 0" ng-click="Round.Player.QueueCast(Ability, Selection.Targets); Selection.Stop();">Cast <i class="material-icons">flare</i></button> 
                             <button ng-show="Ability.Selected" ng-click="Selection.Stop()">Cancel <i class="material-icons">&#xE1B5;</i></button> 
@@ -455,33 +455,30 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
     return effect;
 }])
-.factory("Ability", ["Energy", "Stat", "Effect", function(Energy, Stat, Effect)
+.factory("Ability", ["Util", "Energy", "Stat", "Effect", function(Util, Energy, Stat, Effect)
 {
     var ability = {};
     ability.Random = function(inPower)
     {
         var i;
-        var out = [];
-        var openPos = [];
-        var openNeg = [];
+        var deltas = [];
+        var left = Math.ceil(Math.random() * (Energy.length-1));
+        var right = Energy.length - left;
+        var leftIndex;
+        var rightIndex;
+
         for(i=0; i<Energy.length; i++)
         {
-            openPos.push(i);
-            openNeg.push(i);
-            out.push(0);
+            deltas[i] = 0;
         }
         for(i=0; i<inPower; i++)
         {
-            var index;
-
-            index = Math.random()*openPos.length;
-            out[openPos[index]]++;
-            openNeg.splice(index, 1);
-
-            index = Math.random()*openNeg.length;
-            out[openNeg[index]]--;
-            openNeg.splice(index, 1);
+            leftIndex = Math.floor(left*Math.random());
+            rightIndex = left + Math.floor(right*Math.random());
+            deltas[leftIndex]--;
+            deltas[rightIndex]++;
         }
+        return Util.ArrayJumble(deltas);
     };
     ability.Create = function(inDeltas, inType, inMeta)
     {
@@ -706,10 +703,12 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     {
         var player;
         player = Player.Create();
-        player.Ability(Ability.Create([-1, 1, 0, 0], Effect.Damage, {Name:"Basic Damage 1"}));
-        player.Ability(Ability.Create([0, -1, 1, 0], Effect.Damage, {Name:"Basic Damage 2"}));
-        player.Ability(Ability.Create([0, 0, -1, 1], Effect.Damage, {Name:"Basic Damage 3"}));
-        player.Ability(Ability.Create([1, 0, 0, -1], Effect.Damage, {Name:"Basic Damage 4"}));
+        player.Ability(Ability.Create(Ability.Random(1), Effect.Damage, {Name:"Basic Damage 1"}));
+        player.Ability(Ability.Create(Ability.Random(1), Effect.Damage, {Name:"Basic Damage 2"}));
+        player.Ability(Ability.Create(Ability.Random(1), Effect.Damage, {Name:"Basic Damage 3"}));
+        player.Ability(Ability.Create(Ability.Random(3), Effect.Damage, {Name:"Strong Damage 1"}));
+        player.Ability(Ability.Create(Ability.Random(3), Effect.Damage, {Name:"Strong Damage 2"}));
+        player.Ability(Ability.Create(Ability.Random(3), Effect.Damage, {Name:"Strong Damage 3"}));
         $scope.Players.push(player);
         return player;
     }
