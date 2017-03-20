@@ -89,7 +89,7 @@
             <div>
                 <h4>Players</h4>
                 <dl ng-repeat="Player in Players" class="Player" ng-click="Selection.Toggle(Player)" ng-class="{Active: Player.Active, Targeted: Player.Targeted}">
-                    <dt>Player</dt>
+                    <dt>{{Player.Meta.Name}}</dt>
                     <dd>
                         <h3>Stats</h3>
                         <ul>
@@ -113,6 +113,7 @@
 
 
 <script>
+
 angular.module("Game", ["ngAnimate", "ngRoute"])
 .factory("Util", [function()
 {
@@ -150,6 +151,33 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
         return out;
     };
     return util;
+}])
+.factory("Name", [function()
+{
+    var name = {};
+
+    name.Prefix = ["Xyrp", "Umeg", "Biyn", "Elor", "Kai", "Kha", "Talan", "Sae", "Iol", "Tan", "Marle", "Ves", "Inia", "Za", "Ela", "Pre", "Tor", "Chae", "Naex", "Daer", "Del", "Elin", "Taern"];
+    name.Suffix = ["shin", "lu", "natar", "vel", "rath", "nyll", "vaur", "taar", "enth", "stan", "or", "mar", "eiros", "balar", "tris", "alim", "ora", "nore", "etor", "shandra", "cia", "imnda", "caryn", "arieth"];
+    name.RandPrefix = function()
+    {
+        return name.Prefix[Math.floor(Math.random()*name.Prefix.length)];
+    };
+    name.RandSuffix = function()
+    {
+        return name.Suffix[Math.floor(Math.random()*name.Suffix.length)];
+    };
+    name.Generate = function()
+    {
+        var extra = "";
+        if(Math.random() < 0.3)
+        {
+            extra = name.RandSuffix();
+        }
+
+        return name.RandPrefix()+name.RandSuffix()+extra;
+    }
+
+    return name;
 }])
 .factory("Stat", [function()
 {
@@ -261,9 +289,10 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 {
     var player = {};
 
-    player.Create = function()
+    player.Create = function(inMeta)
     {
         var obj = {};
+        obj.Meta = inMeta;
         obj.Health = Stat.Create(0, 10, 10);
         obj.Energy = Stat.Create(0, 0, 5);
         obj.Active = false;
@@ -334,7 +363,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
 
         obj.CheckHealth = function()
         {
-            if(obj.Health.Percent < 20)
+            if(obj.Health.Percent() < 20)
             {
                 obj.Incapacitated = true;
                 if(obj.Health.Percent() == 0)
@@ -617,6 +646,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
             }
             else
             {
+                console.log("thhis player with", obj.Player.Health.Value, "health is not dead");
                 obj.Player.ApplyEffects();
                 if(obj.Player.Incapacitated)
                 {
@@ -691,7 +721,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     };
     return selection;
 }])
-.controller("GameController", ["$scope", "Player", "Round", "Ability", "Effect", "Selection", function($scope, Player, Round, Ability, Effect, Selection)
+.controller("GameController", ["$scope", "Player", "Round", "Ability", "Effect", "Selection", "Name", function($scope, Player, Round, Ability, Effect, Selection, Name)
 {
     $scope.Players = [];
     $scope.TeamA = [];
@@ -702,7 +732,7 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     function CreatePlayer()
     {
         var player;
-        player = Player.Create();
+        player = Player.Create({Name: Name.Generate()});
         player.Ability(Ability.Create(Ability.Random(1), Effect.Damage, {Name:"Basic Damage 1"}));
         player.Ability(Ability.Create(Ability.Random(1), Effect.Damage, {Name:"Basic Damage 2"}));
         player.Ability(Ability.Create(Ability.Random(1), Effect.Damage, {Name:"Basic Damage 3"}));
@@ -724,7 +754,6 @@ angular.module("Game", ["ngAnimate", "ngRoute"])
     $scope.Round = Round.Create($scope.Players);
 
 }]);
-
 
 </script>
 
